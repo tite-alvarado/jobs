@@ -1,0 +1,135 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description>small demo on aldeed collections and forms</description>
+  <keepDependencies>false</keepDependencies>
+  <properties/>
+  <scm class="hudson.plugins.git.GitSCM" plugin="git@3.0.0">
+    <configVersion>2</configVersion>
+    <userRemoteConfigs>
+      <hudson.plugins.git.UserRemoteConfig>
+        <url>https://github.com/tite-alvarado/aldeed_demo.git</url>
+        <credentialsId></credentialsId>
+      </hudson.plugins.git.UserRemoteConfig>
+    </userRemoteConfigs>
+    <branches>
+      <hudson.plugins.git.BranchSpec>
+        <name>*/master</name>
+      </hudson.plugins.git.BranchSpec>
+      <hudson.plugins.git.BranchSpec>
+        <name>*/dev</name>
+      </hudson.plugins.git.BranchSpec>
+    </branches>
+    <doGenerateSubmoduleConfigurations>false</doGenerateSubmoduleConfigurations>
+    <submoduleCfg class="list"/>
+    <extensions/>
+  </scm>
+  <canRoam>true</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers/>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>env
+# set extra git env vars # source helpers/env_git.sh
+BRANCH_NAME=$(echo $GIT_BRANCH | cut -d&apos;/&apos; -f 2-)
+GIT_AUTHOR_NAME=$(git --no-pager show -s --format=&apos;%an&apos; $GIT_COMMIT)
+GIT_AUTHOR_EMAIL=$(git --no-pager show -s --format=&apos;%ae&apos; $GIT_COMMIT)
+GIT_COMMIT_DATE=$(git --no-pager show -s --format=&apos;%ad&apos; $GIT_COMMIT )
+GIT_CHANGELOG=$(git log $GIT_PREVIOUS_SUCCESSFUL_COMMIT..$GIT_COMMIT)
+GIT_PATCH=$(git diff $GIT_PREVIOUS_SUCCESSFUL_COMMIT..$GIT_COMMIT)
+
+# Gather report info and build # helpers/build_meteorapp.sh
+if [ -e ../$JOB_NAME.txt ] ; then rm -f ../$JOB_NAME.txt ; fi
+echo -e &quot;BUILD INFO:\n____&quot; &gt;&gt; ../$JOB_NAME.txt
+echo -e &quot;url: $GIT_URL &quot; &gt;&gt; ../$JOB_NAME.txt
+echo -e &quot;branch: $GIT_BRANCH &quot; &gt;&gt; ../$JOB_NAME.txt
+echo -e &quot;branch name: $BRANCH_NAME &quot; &gt;&gt; ../$JOB_NAME.txt
+echo -e &quot;commit: $GIT_COMMIT @ $GIT_COMMIT_DATE &quot; &gt;&gt; ../$JOB_NAME.txt
+echo -e &quot;job: $JOB_NAME @ $GIT_URL &quot;  &gt;&gt; ../$JOB_NAME.txt
+echo -e &quot;author: $GIT_AUTHOR_NAME aka $CHANGE_AUTHOR_DISPLAY_NAME @ $GIT_AUTHOR_EMAIL &quot; &gt;&gt; ../$JOB_NAME.txt
+#echo -e &quot;change: $CHANGE_ID - $CHANGE_URL - $CHANGE_TITLE &quot;  &gt;&gt; ../$JOB_NAME.txt
+#echo -e &quot;results: $BUILD_URL &quot; &gt;&gt; ../$JOB_NAME.txt
+echo -e &quot;\n\n CHANGELOG: \n $GIT_CHANGELOG &quot; &gt;&gt; ../$JOB_NAME.txt
+echo -e &quot;\n\n VERSION PATCH: \n $GIT_PATCH &quot; &gt;&gt; ../$JOB_NAME.txt
+/usr/local/bin/meteor npm install --save babel-runtime
+/usr/local/bin/meteor build ..
+
+# Move report and build to target folder for archiving
+mkdir -p target/
+mv ../$JOB_NAME*tar.gz target/${JOB_NAME}-${BRANCH_NAME}-${BUILD_NUMBER}.tar.gz
+mv ../$JOB_NAME*txt target/${JOB_NAME}-${BRANCH_NAME}-${BUILD_NUMBER}.txt
+
+# Copy build to ansible webapps and replace version for deploy # Copy to repo and rebuild repo
+mkdir -p ~/ansible/files/meteor/webapps/
+cp target/${JOB_NAME}-${BRANCH_NAME}-${BUILD_NUMBER}.tar.gz ~/ansible/files/meteor/webapps/
+cp ~/ansible/files/meteor/webapps/${JOB_NAME}-${BRANCH_NAME}-${BUILD_NUMBER}.tar.gz ~/ansible/files/meteor/webapps/${JOB_NAME}.tar.gz</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command># Deploy using inventory from job name and branch, assume deploy to dev from master branch
+BRANCH_NAME=$(echo $GIT_BRANCH | cut -d&apos;/&apos; -f 2-)
+INVENTORIES=&quot;/tmp/ansible_inventories&quot;
+if [ ! -e ${INVENTORIES}/${JOB_NAME}/${BRANCH_NAME} ] ; then BRANCH_NAME=&quot;master&quot; ; fi
+# Select variables for branch or use default - master
+if [ -e ${INVENTORIES}/${JOB_NAME}/${BRANCH_NAME}.json ] ; then
+  VARS=${INVENTORIES}/${JOB_NAME}/${BRANCH_NAME}.json ; 
+elif [ -e ${INVENTORIES}/${JOB_NAME}/${BRANCH_NAME}.yml ] ; then
+  VARS=${INVENTORIES}/${JOB_NAME}/${BRANCH_NAME}.yml ;
+fi
+VARS=${VARS:-&quot;$INVENTORIES/$JOB_NAME/master.json&quot;};
+
+if [ -f &quot;${VARS}&quot; ]; then 
+  # Should have at least variables for master branch to attempt deploy
+  echo &quot; - $( date +%F_%H ) Deploying ${JOB_NAME} build ${BUILD_NUMBER} to $( cat ${INVENTORIES}/${JOB_NAME}/${BRANCH_NAME} ) with ${VARS} mask &quot; | tee -a /tmp/jenkins_ansible_deploy.log
+  ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook ~/ansible/tasks/build_meteorserver.yml -vv -i ${INVENTORIES}/${JOB_NAME}/${BRANCH_NAME} -e app_name=${JOB_NAME} --extra-vars &quot;@$VARS&quot;
+  echo &quot; - $( date +%F_%H ) Deployed ${JOB_NAME} build ${BUILD_NUMBER} successfully to $( cat ${INVENTORIES}/${JOB_NAME}/${BRANCH_NAME} ) with ${VARS} mask &quot; | tee -a /tmp/jenkins_ansible_deploy.log
+else
+  echo &quot; - $( date +%F_%H ) NOT Deploying ${JOB_NAME} build ${BUILD_NUMBER} to $( cat ${INVENTORIES}/${JOB_NAME}/${BRANCH_NAME} ), no variables file for ${BRANCH_NAME} found&quot;;
+fi</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <hudson.tasks.ArtifactArchiver>
+      <artifacts>target/*</artifacts>
+      <allowEmptyArchive>false</allowEmptyArchive>
+      <onlyIfSuccessful>false</onlyIfSuccessful>
+      <fingerprint>false</fingerprint>
+      <defaultExcludes>true</defaultExcludes>
+      <caseSensitive>true</caseSensitive>
+    </hudson.tasks.ArtifactArchiver>
+    <hudson.plugins.ws__cleanup.WsCleanup plugin="ws-cleanup@0.30">
+      <patterns>
+        <hudson.plugins.ws__cleanup.Pattern>
+          <pattern>target*</pattern>
+          <type>INCLUDE</type>
+        </hudson.plugins.ws__cleanup.Pattern>
+      </patterns>
+      <deleteDirs>false</deleteDirs>
+      <skipWhenFailed>false</skipWhenFailed>
+      <cleanWhenSuccess>true</cleanWhenSuccess>
+      <cleanWhenUnstable>true</cleanWhenUnstable>
+      <cleanWhenFailure>true</cleanWhenFailure>
+      <cleanWhenNotBuilt>true</cleanWhenNotBuilt>
+      <cleanWhenAborted>true</cleanWhenAborted>
+      <notFailBuild>true</notFailBuild>
+      <cleanupMatrixParent>false</cleanupMatrixParent>
+      <externalDelete></externalDelete>
+    </hudson.plugins.ws__cleanup.WsCleanup>
+  </publishers>
+  <buildWrappers>
+    <hudson.plugins.ws__cleanup.PreBuildCleanup plugin="ws-cleanup@0.30">
+      <patterns>
+        <hudson.plugins.ws__cleanup.Pattern>
+          <pattern>target/*</pattern>
+          <type>INCLUDE</type>
+        </hudson.plugins.ws__cleanup.Pattern>
+      </patterns>
+      <deleteDirs>true</deleteDirs>
+      <cleanupParameter></cleanupParameter>
+      <externalDelete></externalDelete>
+    </hudson.plugins.ws__cleanup.PreBuildCleanup>
+    <hudson.plugins.timestamper.TimestamperBuildWrapper plugin="timestamper@1.8.7"/>
+  </buildWrappers>
+</project>
