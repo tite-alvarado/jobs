@@ -9,7 +9,7 @@
     <userRemoteConfigs>
       <hudson.plugins.git.UserRemoteConfig>
         <url>https://github.com/tite-alvarado/aldeed_demo.git</url>
-        <credentialsId></credentialsId>
+        <credentialsId>b4b35fa1-affa-4183-8a1b-c7bda8c61a30</credentialsId>
       </hudson.plugins.git.UserRemoteConfig>
     </userRemoteConfigs>
     <branches>
@@ -87,6 +87,11 @@ if [ -f &quot;${VARS}&quot; ]; then
   echo &quot; - $( date +%F_%H ) Deployed ${JOB_NAME} build ${BUILD_NUMBER} successfully to $( cat ${INVENTORIES}/${JOB_NAME}/${BRANCH_NAME} ) with ${VARS} mask &quot; | tee -a /tmp/jenkins_ansible_deploy.log
 else
   echo &quot; - $( date +%F_%H ) NOT Deploying ${JOB_NAME} build ${BUILD_NUMBER} to $( cat ${INVENTORIES}/${JOB_NAME}/${BRANCH_NAME} ), no variables file for ${BRANCH_NAME} found&quot;;
+fi
+
+if [ -e ${PWD}/tests/nightwatch/ ] ; then
+  cd ${PWD}/tests/nightwatch/
+  nightwatch -t *Test.js ;
 fi</command>
     </hudson.tasks.Shell>
   </builders>
