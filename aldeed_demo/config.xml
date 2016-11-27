@@ -72,6 +72,7 @@ cp ~/ansible/files/meteor/webapps/${JOB_NAME}-${BRANCH_NAME}-${BUILD_NUMBER}.tar
 BRANCH_NAME=$(echo $GIT_BRANCH | cut -d&apos;/&apos; -f 2-)
 INVENTORIES=&quot;/tmp/ansible_inventories&quot;
 if [ ! -e ${INVENTORIES}/${JOB_NAME}/${BRANCH_NAME} ] ; then BRANCH_NAME=&quot;master&quot; ; fi
+TARGET=$( cat ${INVENTORIES}/${JOB_NAME}/${BRANCH_NAME} );
 # Select variables for branch or use default - master
 if [ -e ${INVENTORIES}/${JOB_NAME}/${BRANCH_NAME}.json ] ; then
   VARS=${INVENTORIES}/${JOB_NAME}/${BRANCH_NAME}.json ; 
@@ -80,18 +81,22 @@ elif [ -e ${INVENTORIES}/${JOB_NAME}/${BRANCH_NAME}.yml ] ; then
 fi
 VARS=${VARS:-&quot;$INVENTORIES/$JOB_NAME/master.json&quot;};
 
+
 if [ -f &quot;${VARS}&quot; ]; then 
   # Should have at least variables for master branch to attempt deploy
-  echo &quot; - $( date +%F_%H ) Deploying ${JOB_NAME} build ${BUILD_NUMBER} to $( cat ${INVENTORIES}/${JOB_NAME}/${BRANCH_NAME} ) with ${VARS} mask &quot; | tee -a /tmp/jenkins_ansible_deploy.log
+  echo &quot; - $( date +%F_%H ) Deploying ${JOB_NAME} build ${BUILD_NUMBER} to $TARGET with ${VARS} mask &quot; | tee -a /tmp/jenkins_ansible_deploy.log
   ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook ~/ansible/tasks/build_meteorserver.yml -vv -i ${INVENTORIES}/${JOB_NAME}/${BRANCH_NAME} -e app_name=${JOB_NAME} --extra-vars &quot;@$VARS&quot;
-  echo &quot; - $( date +%F_%H ) Deployed ${JOB_NAME} build ${BUILD_NUMBER} successfully to $( cat ${INVENTORIES}/${JOB_NAME}/${BRANCH_NAME} ) with ${VARS} mask &quot; | tee -a /tmp/jenkins_ansible_deploy.log
+  echo &quot; - $( date +%F_%H ) Deployed ${JOB_NAME} build ${BUILD_NUMBER} successfully to $TARGET with ${VARS} mask &quot; | tee -a /tmp/jenkins_ansible_deploy.log
 else
-  echo &quot; - $( date +%F_%H ) NOT Deploying ${JOB_NAME} build ${BUILD_NUMBER} to $( cat ${INVENTORIES}/${JOB_NAME}/${BRANCH_NAME} ), no variables file for ${BRANCH_NAME} found&quot;;
+  echo &quot; - $( date +%F_%H ) NOT Deploying ${JOB_NAME} build ${BUILD_NUMBER} to $TARGET, no variables file for ${BRANCH_NAME} found&quot;;
 fi
 
+# Run tests -if any- with default nightwatch config
 if [ -e ${PWD}/tests/nightwatch/ ] ; then
-  cd ${PWD}/tests/nightwatch/
-  nightwatch -t *Test.js ;
+  # replace target url from tests
+  PORT=$( awk -F: &apos;/port/ {print $NF}&apos; $VARS | sed &apos;s/[^0-9]*//g&apos; );
+  sed -i &quot;/url/ s/\(.*\)\/\/\(.*\)/\1\/\/$TARGET:$PORT&apos;\)/g&quot; ${PWD}/tests/nightwatch/*.js ;
+  nightwatch -c /etc/nightwatch.json ${PWD}/tests/nightwatch/*.js ;
 fi</command>
     </hudson.tasks.Shell>
   </builders>
