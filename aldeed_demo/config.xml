@@ -4,12 +4,11 @@
   <description>small demo on aldeed collections and forms</description>
   <keepDependencies>false</keepDependencies>
   <properties/>
-  <scm class="hudson.plugins.git.GitSCM" plugin="git@3.0.0">
+  <scm class="hudson.plugins.git.GitSCM" plugin="git@3.0.1">
     <configVersion>2</configVersion>
     <userRemoteConfigs>
       <hudson.plugins.git.UserRemoteConfig>
         <url>https://github.com/tite-alvarado/aldeed_demo.git</url>
-        <credentialsId>b4b35fa1-affa-4183-8a1b-c7bda8c61a30</credentialsId>
       </hudson.plugins.git.UserRemoteConfig>
     </userRemoteConfigs>
     <branches>
@@ -91,12 +90,13 @@ else
   echo &quot; - $( date +%F_%H ) NOT Deploying ${JOB_NAME} build ${BUILD_NUMBER} to $TARGET, no variables file for ${BRANCH_NAME} found&quot;;
 fi
 
-# Run tests -if any- with default nightwatch config
+# Run tests -if any-
 if [ -e ${PWD}/tests/nightwatch/ ] ; then
   # replace target url from tests
   PORT=$( awk -F: &apos;/port/ {print $NF}&apos; $VARS | sed &apos;s/[^0-9]*//g&apos; );
   sed -i &quot;/url/ s/\(.*\)\/\/\(.*\)/\1\/\/$TARGET:$PORT&apos;\)/g&quot; ${PWD}/tests/nightwatch/*.js ;
-  nightwatch -c /etc/nightwatch.json ${PWD}/tests/nightwatch/*.js ;
+  # Execute on all browsers configured
+  find /etc/nightwatch.*.json | xargs -I % nightwatch -c % ${PWD}/tests/nightwatch/*.js ;
 fi</command>
     </hudson.tasks.Shell>
   </builders>
@@ -109,7 +109,7 @@ fi</command>
       <defaultExcludes>true</defaultExcludes>
       <caseSensitive>true</caseSensitive>
     </hudson.tasks.ArtifactArchiver>
-    <hudson.plugins.ws__cleanup.WsCleanup plugin="ws-cleanup@0.30">
+    <hudson.plugins.ws__cleanup.WsCleanup plugin="ws-cleanup@0.32">
       <patterns>
         <hudson.plugins.ws__cleanup.Pattern>
           <pattern>target*</pattern>
@@ -129,7 +129,7 @@ fi</command>
     </hudson.plugins.ws__cleanup.WsCleanup>
   </publishers>
   <buildWrappers>
-    <hudson.plugins.ws__cleanup.PreBuildCleanup plugin="ws-cleanup@0.30">
+    <hudson.plugins.ws__cleanup.PreBuildCleanup plugin="ws-cleanup@0.32">
       <patterns>
         <hudson.plugins.ws__cleanup.Pattern>
           <pattern>target/*</pattern>
